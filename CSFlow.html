@@ -1582,7 +1582,7 @@ input,select,textarea{font-family:var(--font)}
 <div class="toast" id="toast"></div>
 <script>
 // ── SUPABASE ──
-const APP_VERSION='V102';
+const APP_VERSION='V103';
 document.title='CSFlow '+APP_VERSION+' · CS Consulting';
 document.getElementById('loginFootVersion').textContent='CSFlow '+APP_VERSION+' · CS Consulting – Accounting & Finance Solutions, Lda';
 document.getElementById('sbFootVersion').textContent='CSFlow '+APP_VERSION+' · © 2026 CS Consulting';
@@ -8549,11 +8549,12 @@ const avNorm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCas
 const avYM=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
 const avMesTxt=ym=>{if(!ym)return'—';const[a,m]=ym.split('-');return AV_MESES[+m-1]+' '+a;};
 const avMesSeg=ym=>{let[a,m]=ym.split('-').map(Number);m++;if(m>12){m=1;a++;}return a+'-'+String(m).padStart(2,'0');};
-function avCfg(){const c=FAT.cfg=FAT.cfg||{};c.artigos=c.artigos||{};c.contas=c.contas||{};c.ok=c.ok||{};c.ignorar=c.ignorar||{};
+function avCfg(){const c=FAT.cfg=FAT.cfg||{};c.artigos=c.artigos||{};c.contas=c.contas||{};c.ok=c.ok||{};c.ignorar=c.ignorar||{};c.artCli=c.artCli||{};
   if(!c.v96){c.v96=true;if(c.artigos.S004==='pontual')c.artigos.S004='rhPontual';}// V96: admissões/cessações passam a pontual de RH
   return c;}
 function avGuardarCfg(){kvUpsert('fat:cfg',avCfg());}
-function avTipoArt(a){return avCfg().artigos[a]||AV_ART_DEF[a]||null;}
+// V103: exceção por cliente (ex.: S010 conta como contabilidade só para este cliente)
+function avTipoArt(a,cid){const x=cid&&avCfg().artCli[cid];return(x&&x[a])||avCfg().artigos[a]||AV_ART_DEF[a]||null;}
 function avNomeArt(a){return AV_ART_NOMES[a]||(avCfg().nomes||{})[a]||a;}
 // Avença mensal equivalente de um cliente (contabilidade = mensal + anual/12, como na Parceria Peakwise)
 function avMensal(cid){const a=avencasData[cid]||{};const n=x=>parseFloat(x)||0;
@@ -8658,7 +8659,10 @@ function avChkAnual(pref,ym,c,porTipo,origem){const av=avMensal(c.id);
   [['contabAnual','contabA','fecho de ano / anual de contabilidade'],['rhAnual','rhA','anual de RH (Relatório Único)']].forEach(([tp,k,lab])=>{const v=avR2(porTipo[tp]||0);if(v<=0)return;const r=av[k];
     if(Math.abs(v-r)>0.01)avQNova(pref+':'+tp+':'+c.id,{tipo:'anual',cid:c.id,campo:tp,valor:v,ym,titulo:c.name+' · '+lab,txt:origem+' '+avEur(v)+(r?' e a avença anual registada é '+avEur(r):' e não tem avença anual registada')+'.',
       ops:[['atualizar','Atualizar a avença anual para '+avEur(v)],['soeste','Foi só este ano']].concat(pref.startsWith('prev')?[['corrigir','Vou corrigir no CentralGest']]:[])});});}
-function avPorTipo(pares){const o={};pares.forEach(([art,v])=>{const t=avTipoArt(art)||'pontual';o[t]=avR2((o[t]||0)+v);});return o;}
+// V103: botões "artigo X conta como contabilidade/RH para este cliente"
+function avOpsArtCli(cid,arts,tp){const lab=tp==='contab'?'contabilidade':'RH';
+  return[...new Set(arts)].filter(a=>!['contab','rh','contabAnual','rhAnual'].includes(avTipoArt(a,cid))).map(a=>['art:'+a,a+' conta como '+lab+' para este cliente']);}
+function avPorTipo(pares,cid){const o={};pares.forEach(([art,v])=>{const t=avTipoArt(art,cid)||'pontual';o[t]=avR2((o[t]||0)+v);});return o;}
 // Verificação antes de emitir: cria as dúvidas a partir do PDF (e do Excel, se houver)
 function avVerificarPrev(P,X){
   const cfg=avCfg();const ym=P.ym;
@@ -8672,17 +8676,17 @@ function avVerificarPrev(P,X){
     if(mesL.length){const m=(mesL[0].desc.match(AV_MESES_RE)||[])[1]||'';
       avQNova('prev:'+ym+':mes:'+c.id,{tipo:'mes',cid:c.id,conta,mesLinha:m.toLowerCase(),ym,titulo:c.name+' · linhas de '+m.toLowerCase(),txt:'O contrato tem '+mesL.length+' linha(s) "'+m+'" ('+mesL.map(l=>l.art+' '+avEur(l.v)).join(', ')+'; total '+avEur(mesL.reduce((s,l)=>s+l.v,0))+'). É um mês em atraso faturado junto?',
         ops:[['lembrar','Sim — lembrar de retirar no próximo mês'],['corrigir','Vou corrigir já no CentralGest'],['naoe','Não é atraso']]});}
-    ['contab','rh'].forEach(tp=>{const v=avR2(K.linhas.filter(l=>avTipoArt(l.art)===tp&&!mesL.includes(l)).reduce((s,l)=>s+l.v,0));const r=av[tp+'M'];if(r===0&&(tp==='contab'?av.anualC:av.anualR))return;
+    ['contab','rh'].forEach(tp=>{const v=avR2(K.linhas.filter(l=>avTipoArt(l.art,c.id)===tp&&!mesL.includes(l)).reduce((s,l)=>s+l.v,0));const r=av[tp+'M'];if(r===0&&(tp==='contab'?av.anualC:av.anualR))return;
       if(Math.abs(v-r)>0.01){const lab=tp==='contab'?'contabilidade':'RH';
         avQNova('prev:'+ym+':'+tp+':'+c.id,{tipo:'valor',cid:c.id,campo:tp,valor:v,ym,titulo:c.name+' · avença de '+lab,txt:'O contrato fatura '+avEur(v)+' de '+lab+' por mês e a avença registada é '+avEur(r)+'.',
-          ops:[['atualizar','Atualizar a avença para '+avEur(v)],['soeste','Só este mês'],['corrigir','Vou corrigir no CentralGest']]});}});
-    avChkAnual('prev:'+ym,ym,c,avPorTipo(K.linhas.filter(l=>!mesL.includes(l)).map(l=>[l.art,l.v])),'O contrato fatura');
+          ops:[['atualizar','Atualizar a avença para '+avEur(v)],['soeste','Só este mês'],['corrigir','Vou corrigir no CentralGest']].concat(avOpsArtCli(c.id,K.linhas.filter(l=>!mesL.includes(l)).map(l=>l.art),tp))});}});
+    avChkAnual('prev:'+ym,ym,c,avPorTipo(K.linhas.filter(l=>!mesL.includes(l)).map(l=>[l.art,l.v]),c.id),'O contrato fatura');
     K.linhas.forEach(l=>{if(mesL.includes(l))return;const pad=avNomeArt(l.art);const chave=c.id+'|'+l.art+'|'+l.desc+'|'+l.v;
       if(pad&&avNorm(l.desc)!==avNorm(pad)&&!cfg.ok[chave])avQNova('prev:'+ym+':linha:'+chave,{tipo:'linha',cid:c.id,chave,titulo:c.name+' · linha especial',txt:'"'+l.desc+'" ('+l.art+', '+avEur(l.v)+'). Está correta?',ops:[['ok','Correta — não voltar a perguntar'],['corrigir','Vou corrigir']]});});
   });
   // V96: em dezembro, avisa quem tem avença anual e não tem a linha do fecho / RU no contrato
   if(ym.slice(5)==='12'){const tipos=new Set(Object.keys(Object.assign({},AV_ART_NOMES,cfg.nomes||{},cfg.artigos)).map(avTipoArt));
-    Object.keys(P.contas).forEach(conta=>{const c=avCliDaConta(conta,'',P.contas[conta].nome);if(!c)return;const av=avMensal(c.id);const t=new Set(P.contas[conta].linhas.map(l=>avTipoArt(l.art)));
+    Object.keys(P.contas).forEach(conta=>{const c=avCliDaConta(conta,'',P.contas[conta].nome);if(!c)return;const av=avMensal(c.id);const t=new Set(P.contas[conta].linhas.map(l=>avTipoArt(l.art,c.id)));
       [['contabAnual','contabA','fecho de ano'],['rhAnual','rhA','Relatório Único / anual de RH']].forEach(([tp,k,lab])=>{if(av[k]<=0||!tipos.has(tp)||t.has(tp))return;
         avQNova('prev:'+ym+':falta-'+tp+':'+c.id,{tipo:'faltaAnual',cid:c.id,titulo:c.name+' · '+lab+' em falta',txt:'Tem avença anual de '+avEur(av[k])+' ('+lab+') mas o contrato de '+avMesTxt(ym)+' não tem essa linha.',ops:[['falta','Falta acrescentar'],['outromes','Fatura noutro mês'],['naoano','Este ano não']]});});});}
   // lembretes deste mês: se a linha ainda lá está, pergunta; se já saiu, dá-se por feito
@@ -8706,10 +8710,10 @@ function avVerificarSaft(ym){
   {const Q0=avQ();Object.keys(Q0).forEach(k=>{if(k.startsWith('saft:'+ym+':')&&!Q0[k].resposta)delete Q0[k];});}const fat={};
   Object.keys(M.contas).forEach(conta=>{const C=M.contas[conta];const c=avCliDaConta(conta,C.nif,C.nome);
     if(!c){const tot=avR2(Object.values(C.a).reduce((s,v)=>s+v,0));if(tot>0)avQNova('saft:'+ym+':semcli:'+conta,{tipo:'semcli',conta,titulo:'Faturado sem cliente no CSFlow',txt:(C.nome||conta)+(C.nif?' (NIF '+C.nif+')':'')+' teve '+avEur(tot)+' faturados em '+avMesTxt(ym)+'. Qual é o cliente?',ops:[['nao','Não é cliente do CSFlow']]});return;}
-    fat[c.id]=C;const av=avMensal(c.id);avChkAnual('saft:'+ym,ym,c,avPorTipo(Object.entries(C.a)),'Faturado em '+avMesTxt(ym)+':');
-    ['contab','rh'].forEach(tp=>{const v=avR2(Object.keys(C.a).filter(a=>avTipoArt(a)===tp).reduce((s,a)=>s+C.a[a],0));const r=av[tp+'M'];if(r===0&&(tp==='contab'?av.anualC:av.anualR))return;
+    fat[c.id]=C;const av=avMensal(c.id);avChkAnual('saft:'+ym,ym,c,avPorTipo(Object.entries(C.a),c.id),'Faturado em '+avMesTxt(ym)+':');
+    ['contab','rh'].forEach(tp=>{const v=avR2(Object.keys(C.a).filter(a=>avTipoArt(a,c.id)===tp).reduce((s,a)=>s+C.a[a],0));const r=av[tp+'M'];if(r===0&&(tp==='contab'?av.anualC:av.anualR))return;
       if(v>0&&Math.abs(v-r)>0.01){const lab=tp==='contab'?'contabilidade':'RH';
-        avQNova('saft:'+ym+':'+tp+':'+c.id,{tipo:'valor',cid:c.id,campo:tp,valor:v,ym,titulo:c.name+' · '+lab+' faturada em '+avMesTxt(ym),txt:'Faturado '+avEur(v)+(r?' e a avença registada é '+avEur(r):' e não tem avença de '+lab+' registada')+'.',ops:[['atualizar','Atualizar a avença para '+avEur(v)],['soeste','Foi só este mês']]});}});});
+        avQNova('saft:'+ym+':'+tp+':'+c.id,{tipo:'valor',cid:c.id,campo:tp,valor:v,ym,titulo:c.name+' · '+lab+' faturada em '+avMesTxt(ym),txt:'Faturado '+avEur(v)+(r?' e a avença registada é '+avEur(r):' e não tem avença de '+lab+' registada')+'.',ops:[['atualizar','Atualizar a avença para '+avEur(v)],['soeste','Foi só este mês']].concat(avOpsArtCli(c.id,Object.keys(C.a),tp))});}});});
   CLIENTS.forEach(c=>{if(fat[c.id]||cfg.ignorar[c.id]||!cliAtivoEm(c,+ym.slice(0,4),+ym.slice(5)-1))return;const av=avMensal(c.id);if(av.contabM<=0)return;if(c.entrada&&c.entrada.slice(0,7)>ym)return;
     avQNova('saft:'+ym+':semfat:'+c.id,{tipo:'semfat',cid:c.id,titulo:c.name+' · sem fatura em '+avMesTxt(ym),txt:'Tem avença de '+avEur(av.contabM)+' mas não houve fatura neste mês.',ops:[['esquecida','Esquecida — vou faturar'],['naofat','Não fatura este mês'],['saiu','Saiu da carteira'],['outro','Fatura noutra entidade — não voltar a perguntar']]});});
   avGuardarCfg();avQGuardar();
@@ -8723,6 +8727,11 @@ function avResponder(id,op){
     if(op!=='nao'&&q.id.startsWith('prev:')&&FAT.prev&&FAT.prev.contas&&FAT.prev.contas[q.conta]&&FAT.prev.contas[q.conta].linhas)avVerificarPrev({ym:FAT.prev.ym,n:FAT.prev.n,contas:FAT.prev.contas},null);
     if(op!=='nao'&&q.id.startsWith('saft:')){const ym=q.id.split(':')[1];avVerificarSaft(ym);}
     avQGuardar();avDepoisResposta();return;}
+  if(q.tipo==='valor'&&op.startsWith('art:')){const art=op.slice(4);cfg.artCli[q.cid]=cfg.artCli[q.cid]||{};cfg.artCli[q.cid][art]=q.campo;avGuardarCfg();
+    q.resposta=op;q.respEm=new Date().toISOString();q.respPor=parcUser();
+    if(q.id.startsWith('prev:')&&FAT.prev&&FAT.prev.contas)avVerificarPrev({ym:FAT.prev.ym,n:FAT.prev.n,contas:FAT.prev.contas},null);
+    if(q.id.startsWith('saft:'))avVerificarSaft(q.id.split(':')[1]);
+    avQGuardar();avDepoisResposta();toast(art+' passa a contar como '+(q.campo==='contab'?'contabilidade':'RH')+' para este cliente');return;}
   if((q.tipo==='valor'||q.tipo==='anual')&&op==='atualizar')avAtualizar(q.cid,q.campo,q.valor,'faturação '+avMesTxt(q.ym));
   if(q.tipo==='valor'&&op==='soeste'&&q.id.startsWith('prev:')){const lid='l'+Date.now();avLemb()[lid]={id:lid,tipo:'valor',cid:q.cid,mes:avMesSeg(q.ym),txt:'Confirmar que o contrato de '+(CLIENTS.find(c=>c.id===q.cid)||{}).name+' volta ao valor da avença ('+avEur(avMensal(q.cid)[q.campo+'M'])+').',criadoEm:new Date().toISOString(),por:parcUser()};kvUpsert('fat:lemb',avLemb());}
   if(q.tipo==='mes'&&op==='lembrar'){const lid='l'+Date.now();avLemb()[lid]={id:lid,tipo:'mes',cid:q.cid,mesLinha:q.mesLinha,mes:avMesSeg(q.ym),txt:'Retirar as linhas de '+q.mesLinha+' do contrato de '+(CLIENTS.find(c=>c.id===q.cid)||{}).name+'.',criadoEm:new Date().toISOString(),por:parcUser()};kvUpsert('fat:lemb',avLemb());}
@@ -8761,7 +8770,9 @@ function avArtigos(){const cfg=avCfg();const arts=[...new Set(Object.keys(AV_ART
   let m=document.getElementById('modalAvArt');if(!m){m=document.createElement('div');m.className='modal-overlay';m.id='modalAvArt';document.body.appendChild(m);}
   m.innerHTML=`<div class="modal" style="max-width:640px"><div class="modal-header"><div class="modal-title">⚙️ Artigos de faturação</div><button class="modal-close" onclick="closeModal('modalAvArt')">✕</button></div>
     <div class="modal-body"><div style="font-size:12.5px;color:var(--gray-500);margin-bottom:10px">Indica o que conta como avença. Fica guardado para os próximos meses.</div>
-    ${arts.map(a=>`<div class="av-art"><div><b>${a}</b> · ${avEsc(avNomeArt(a))}</div><select class="form-select" onchange="avCfg().artigos['${a}']=this.value;avGuardarCfg()">${['',...Object.keys(AV_TIPOS)].map(k=>`<option value="${k}" ${avTipoArt(a)===k||(!k&&!avTipoArt(a))?'selected':''}>${k?AV_TIPOS[k]:'— escolher —'}</option>`).join('')}</select></div>`).join('')}</div>
+    ${arts.map(a=>`<div class="av-art"><div><b>${a}</b> · ${avEsc(avNomeArt(a))}</div><select class="form-select" onchange="avCfg().artigos['${a}']=this.value;avGuardarCfg()">${['',...Object.keys(AV_TIPOS)].map(k=>`<option value="${k}" ${avTipoArt(a)===k||(!k&&!avTipoArt(a))?'selected':''}>${k?AV_TIPOS[k]:'— escolher —'}</option>`).join('')}</select></div>`).join('')}
+    ${(()=>{const L=[];Object.keys(cfg.artCli).forEach(cid=>Object.keys(cfg.artCli[cid]||{}).forEach(a=>L.push([cid,a,cfg.artCli[cid][a]])));
+      return L.length?`<div style="font-size:13px;font-weight:700;color:var(--navy);margin:16px 0 6px">Exceções por cliente</div>`+L.map(([cid,a,t])=>`<div class="av-art"><div><b>${avEsc((CLIENTS.find(c=>c.id===cid)||{}).name||cid)}</b> · ${a} conta como ${avEsc(AV_TIPOS[t]||t)}</div><button class="btn btn-ghost" style="font-size:12px" onclick="delete avCfg().artCli['${cid}']['${a}'];avGuardarCfg();avArtigos()">Retirar</button></div>`).join(''):'';})()}</div>
     <div class="modal-foot"><button class="btn btn-primary" onclick="closeModal('modalAvArt');renderAvencas();if(avPendentes().length)avAbrirDuvidas(true)">Concluído</button></div></div>`;m.classList.add('open');}
 function avHistorico(cid){const c=CLIENTS.find(x=>x.id===cid);const H=(AVHIST[cid]||[]).slice().reverse();
   let m=document.getElementById('modalAvHist');if(!m){m=document.createElement('div');m.className='modal-overlay';m.id='modalAvHist';document.body.appendChild(m);}
