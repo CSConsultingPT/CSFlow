@@ -1582,7 +1582,7 @@ input,select,textarea{font-family:var(--font)}
 <div class="toast" id="toast"></div>
 <script>
 // ── SUPABASE ──
-const APP_VERSION='V101';
+const APP_VERSION='V102';
 document.title='CSFlow '+APP_VERSION+' · CS Consulting';
 document.getElementById('loginFootVersion').textContent='CSFlow '+APP_VERSION+' · CS Consulting – Accounting & Finance Solutions, Lda';
 document.getElementById('sbFootVersion').textContent='CSFlow '+APP_VERSION+' · © 2026 CS Consulting';
@@ -8661,7 +8661,9 @@ function avChkAnual(pref,ym,c,porTipo,origem){const av=avMensal(c.id);
 function avPorTipo(pares){const o={};pares.forEach(([art,v])=>{const t=avTipoArt(art)||'pontual';o[t]=avR2((o[t]||0)+v);});return o;}
 // Verificação antes de emitir: cria as dúvidas a partir do PDF (e do Excel, se houver)
 function avVerificarPrev(P,X){
-  const cfg=avCfg();const ym=P.ym;const mesNome=AV_MESES[+ym.slice(5)-1];const nomeCli=(c,conta)=>c?c.name:(P.contas[conta]||{}).nome||conta;
+  const cfg=avCfg();const ym=P.ym;
+  // V102: ao reler a listagem, as dúvidas ainda sem resposta deste mês são recalculadas (as já respondidas mantêm-se)
+  {const Q0=avQ();Object.keys(Q0).forEach(k=>{if(k.startsWith('prev:'+ym+':')&&!Q0[k].resposta)delete Q0[k];});}const mesNome=AV_MESES[+ym.slice(5)-1];const nomeCli=(c,conta)=>c?c.name:(P.contas[conta]||{}).nome||conta;
   const vistos=new Set();
   Object.keys(P.contas).forEach(conta=>{const K=P.contas[conta];const c=avCliDaConta(conta,'',K.nome);
     if(!c){avQNova('prev:'+ym+':semcli:'+conta,{tipo:'semcli',conta,titulo:'Contrato sem cliente no CSFlow',txt:K.nome+' (conta '+conta+', '+avEur(K.total)+') não corresponde a nenhum cliente do CSFlow. Qual é?',ops:[['nao','Não é cliente do CSFlow']]});return;}
@@ -8700,7 +8702,8 @@ function avVerificarPrev(P,X){
 }
 // Depois de emitir: SAF-T do último mês contra as avenças
 function avVerificarSaft(ym){
-  const M=FAT['mes:'+ym];if(!M)return;const cfg=avCfg();const fat={};
+  const M=FAT['mes:'+ym];if(!M)return;const cfg=avCfg();
+  {const Q0=avQ();Object.keys(Q0).forEach(k=>{if(k.startsWith('saft:'+ym+':')&&!Q0[k].resposta)delete Q0[k];});}const fat={};
   Object.keys(M.contas).forEach(conta=>{const C=M.contas[conta];const c=avCliDaConta(conta,C.nif,C.nome);
     if(!c){const tot=avR2(Object.values(C.a).reduce((s,v)=>s+v,0));if(tot>0)avQNova('saft:'+ym+':semcli:'+conta,{tipo:'semcli',conta,titulo:'Faturado sem cliente no CSFlow',txt:(C.nome||conta)+(C.nif?' (NIF '+C.nif+')':'')+' teve '+avEur(tot)+' faturados em '+avMesTxt(ym)+'. Qual é o cliente?',ops:[['nao','Não é cliente do CSFlow']]});return;}
     fat[c.id]=C;const av=avMensal(c.id);avChkAnual('saft:'+ym,ym,c,avPorTipo(Object.entries(C.a)),'Faturado em '+avMesTxt(ym)+':');
