@@ -1582,7 +1582,7 @@ input,select,textarea{font-family:var(--font)}
 <div class="toast" id="toast"></div>
 <script>
 // ── SUPABASE ──
-const APP_VERSION='V100';
+const APP_VERSION='V101';
 document.title='CSFlow '+APP_VERSION+' · CS Consulting';
 document.getElementById('loginFootVersion').textContent='CSFlow '+APP_VERSION+' · CS Consulting – Accounting & Finance Solutions, Lda';
 document.getElementById('sbFootVersion').textContent='CSFlow '+APP_VERSION+' · © 2026 CS Consulting';
@@ -8622,7 +8622,8 @@ async function avLerPdfContratos(file){
   const out={};const datas={};
   Object.keys(porConta).forEach(conta=>{const rs=porConta[conta];const ult=rs.map(r=>r.doc).sort((a,b)=>(+a.split('.').pop())-(+b.split('.').pop())).pop();
     let L=rs.filter(r=>r.doc===ult);const n=L.length,k=Math.round(Math.sqrt(n));const ig=(a,b)=>a.art===b.art&&a.desc===b.desc&&a.v===b.v&&a.qtd===b.qtd;
-    if(k*k===n&&L.every((r,i)=>ig(r,L[i%k])))L=L.slice(0,k);
+    // V101: o CentralGest repete em bloco (A,B,A,B) ou linha a linha (A,A,B,B)
+    if(k*k===n&&k>1){if(L.every((r,i)=>ig(r,L[i%k])))L=L.slice(0,k);else if(L.every((r,i)=>ig(r,L[Math.floor(i/k)*k])))L=L.filter((r,i)=>i%k===0);}
     const d=L[0].data;const ym=d.slice(6,10)+'-'+d.slice(3,5);datas[ym]=(datas[ym]||0)+1;
     out[conta]={nome:L[0].nome,contrato:L[0].contrato,doc:ult,ym,linhas:L.map(r=>({art:r.art,desc:r.desc,qtd:r.qtd,v:r.v})),total:avR2(L.reduce((s,r)=>s+r.v,0))};});
   const ym=Object.keys(datas).sort((a,b)=>datas[b]-datas[a])[0];
